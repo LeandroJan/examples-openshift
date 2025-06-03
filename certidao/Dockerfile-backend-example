@@ -1,0 +1,22 @@
+ARG DEPENDENCY_PROXY
+# FROM ${DEPENDENCY_PROXY}/openjdk:17-jdk-slim
+FROM ${DEPENDENCY_PROXY}/ubi9/openjdk-17-runtime:latest 
+# Ou registry.redhat.io/ubi9/openjdk-17-runtime:latest
+
+ARG PROFILE=dev
+
+WORKDIR /app
+
+# Assegurar que o diretório de trabalho permite escrita pelo grupo root, ao qual o usuário arbitrário pertencerá
+RUN chgrp -R 0 /app && \
+    chmod -R g+rwX /app
+
+COPY backend/target/certidao-unificada-*.jar app.jar
+
+ENV SPRING_PROFILES_ACTIVE=${PROFILE}
+
+# As imagens UBI OpenJDK geralmente já definem um usuário não-root.
+# Se for necessário explicitamente (verificar documentação da imagem UBI específica):
+# USER 1001
+
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom" , "-jar", "app.jar"]

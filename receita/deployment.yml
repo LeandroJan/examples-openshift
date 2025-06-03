@@ -1,0 +1,95 @@
+# O Service é definido como ClusterIP (o padrão).
+# A exposição para o mundo externo deve ser feita através de um objeto 'Route' do OpenShift,
+# que é mais seguro e flexível que o NodePort para tráfego web.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}
+spec:
+  ports:
+    - name: web
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+    - name: actuator-port
+      protocol: TCP
+      port: 81
+      targetPort: 8081
+  selector:
+    app: ${APP_LABEL}
+  type: ClusterIP # MODIFICADO: Alterado de NodePort para ClusterIP. 
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}
+spec:
+  # O número de réplicas pode ser gerenciado por um Horizontal Pod Autoscaler (HPA).
+  # A variável HPA_FILE no seu CI sugere que você já faz isso.
+  selector:
+    matchLabels:
+      app: ${APP_LABEL}
+  template:
+    metadata:
+      annotations:
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+      labels:
+        app: ${APP_LABEL}
+    spec:
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: ${APP_NAME}
+        # REMOVIDO: A seção 'args' foi removida pois não se aplicava à aplicação Java.
+        envFrom:
+        - configMapRef:
+            name: ${APP_NAME}-configs
+        - secretRef:
+            name: ${APP_NAME}-secrets
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: actuator-port
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: actuator-port
+          failureThreshold: 10
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: actuator-port
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        resources:
+          requests:
+            memory: "768Mi"
+            cpu: "300m"
+          limits:
+            memory: "768Mi"
+            cpu: "300m"
+        image: ${DOCKER_IMAGE_TAG_BACKEND}
+        imagePullPolicy: Always
+        # ADICIONADO: O securityContext reforça a execução segura do container,
+        # alinhando-se com as políticas do OpenShift.
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          # Habilita o perfil de segurança padrão do runtime do container.
+          seccompProfile:
+            type: RuntimeDefault
+          # Remove todas as capabilities do Linux, seguindo o princípio de privilégio mínimo.
+          capabilities:
+            drop:
+              - "ALL"
+      imagePullSecrets:
+        - name: gitlab-auth

@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}
+spec:
+  ports:
+    - name: http # Nomear a porta é uma boa prática
+      protocol: TCP
+      port: 80
+      targetPort: http # Referencia a porta do contêiner pelo nome
+  selector:
+    app: ${APP_LABEL}
+  type: ClusterIP # Alterado de NodePort. A Rota cuidará do acesso externo.
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}
+  annotations:
+    app.gitlab.com/app: ${CI_PROJECT_PATH_SLUG}
+    app.gitlab.com/env: ${CI_ENVIRONMENT_SLUG}  
+spec:
+  replicas: ${REPLICAS_NUMBER}
+  selector:
+    matchLabels:
+      app: ${APP_LABEL}
+  template:
+    metadata:
+      annotations:
+        app.gitlab.com/app: ${CI_PROJECT_PATH_SLUG}
+        app.gitlab.com/env: ${CI_ENVIRONMENT_SLUG} 
+      labels:
+        app: ${APP_LABEL}
+    spec:
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: ${APP_NAME}
+        image: ${DOCKER_IMAGE_TAG}
+        imagePullPolicy: Always
+        ports:
+          - name: http
+            containerPort: ${CONTAINER_PORT} # Garanta que esta porta seja definida e exposta
+            protocol: TCP
+        env:
+        - name: TZ
+          value: America/Sao_Paulo
+        # --- ADICIONADO: Health Probes (sondas de verificação) para confiabilidade ---
+        livenessProbe:
+          httpGet:
+            path: /actuator/health # IMPORTANTE: Ajuste este caminho para o endpoint de health da sua aplicação
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health # IMPORTANTE: Ajuste este caminho para o endpoint de health da sua aplicação
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        # --- ADICIONADO: Gerenciamento de recursos para estabilidade e agendamento ---
+        resources:
+          requests:
+            cpu: "100m"     # IMPORTANTE: Ajuste para as necessidades base da sua aplicação
+            memory: "256Mi"   # IMPORTANTE: Ajuste para as necessidades base da sua aplicação
+          limits:
+            cpu: "500m"     # IMPORTANTE: Ajuste para as necessidades máximas da sua aplicação
+            memory: "512Mi"   # IMPORTANTE: Ajuste para as necessidades máximas da sua aplicação
+      imagePullSecrets:
+        - name: gitlab-auth
+
+---
+# --- SUBSTITUÍDO Ingress por Rota do OpenShift ---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-route
+  annotations:
+    # --- ADICIONADO: Anotações específicas da Rota para afinidade de sessão (sticky session) ---
+    haproxy.router.openshift.io/balance: cookie
+    haproxy.router.openshift.io/cookie_name: SESSION_ID # Opcional: customize o nome do cookie
+spec:
+  host: ${DEPLOY_HOST}
+  to:
+    kind: Service
+    name: ${APP_NAME}
+  port:
+    targetPort: http
+  # --- ADICIONADO: Configuração TLS para tráfego seguro ---
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# --- SUBSTITUÍDO Ingress por Rota do OpenShift ---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-ext-route
+  annotations:
+    # --- ADICIONADO: Anotações específicas da Rota para afinidade de sessão (sticky session) ---
+    haproxy.router.openshift.io/balance: cookie
+    haproxy.router.openshift.io/cookie_name: SESSION_ID # Opcional: customize o nome do cookie
+spec:
+  host: ${DEPLOY_HOST_EXT}
+  to:
+    kind: Service
+    name: ${APP_NAME}
+  port:
+    targetPort: http
+  # --- ADICIONADO: Configuração TLS para tráfego seguro ---
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

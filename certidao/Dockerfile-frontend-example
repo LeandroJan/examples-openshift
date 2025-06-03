@@ -1,0 +1,30 @@
+ARG DEPENDENCY_PROXY
+# FROM ${DEPENDENCY_PROXY}/nginx:alpine
+FROM ${DEPENDENCY_PROXY}/ubi9/nginx-120:latest 
+# Ou registry.redhat.io/ubi9/nginx-120:latest
+
+# Copiar arquivos estáticos para o local esperado pela imagem UBI Nginx (geralmente /usr/share/nginx/html ou um local configurável)
+# A imagem UBI Nginx pode ter um diretório diferente do /usr/share/nginx/html padrão do nginx:alpine.
+# Consulte a documentação da imagem UBI Nginx específica. Assumindo que /opt/app-root/src é um local comum para S2I/UBI.
+# Para UBI Nginx, o diretório padrão para conteúdo estático é frequentemente /usr/share/nginx/html ou configurado via S2I.
+# Se estiver usando a imagem UBI Nginx diretamente, /usr/share/nginx/html ainda é um local comum.
+COPY frontend/dist/certidao-unificada /usr/share/nginx/html
+
+# Ajustar nginx-custom.conf para:
+# 1. Escutar na porta 8080 (ou a porta que a imagem UBI Nginx usa por padrão).
+# 2. Usar caminhos graváveis para PID e logs (e.g., /tmp).
+#    Exemplo de modificações em nginx-custom.conf:
+#    pid /tmp/nginx.pid;
+#    access_log /tmp/access.log;
+#    error_log /tmp/error.log;
+#    server {
+#        listen 8080 default_server;
+#       ...
+#    }
+COPY frontend/nginx-custom.conf /etc/nginx/conf.d/default.conf
+
+# A imagem UBI Nginx já é configurada para rodar como não-root.
+# USER 1001 # Geralmente não necessário, já definido na imagem base UBI Nginx.
+
+RUN ls -l /usr/share/nginx/html/
+# O ENTRYPOINT/CMD é geralmente fornecido pela imagem base UBI Nginx.

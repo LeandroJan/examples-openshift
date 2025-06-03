@@ -1,0 +1,5 @@
+.DS_Store
+receita/gitlab-ci.yml
+certidao/gitlab-ci.yml
+templates-main-cicd/
+certidao/gitlab-ci-openshift.yml

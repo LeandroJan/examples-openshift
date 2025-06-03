@@ -1,0 +1,57 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-route    
+  annotations:
+    haproxy.router.openshift.io/balance: roundrobin
+    #haproxy.router.openshift.io/balance: source
+spec:
+  host: ${DEPLOY_HOST}
+  path: "${CONTEXTO_API}"
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: ${APP_NAME}
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-route-ext
+  annotations:
+    haproxy.router.openshift.io/balance: roundrobin
+    #haproxy.router.openshift.io/balance: source
+spec:
+  host: ${DEPLOY_HOST_EXT}
+  path: "${CONTEXTO_API}"
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: ${APP_NAME}
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-actuator
+  annotations:
+    haproxy.router.openshift.io/balance: roundrobin
+spec:
+  host: ${DEPLOY_HOST}
+  path: "/actuator"
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  port:
+    targetPort: 8081
+  to:
+    kind: Service
+    name: ${APP_NAME}

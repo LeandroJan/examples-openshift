@@ -1,0 +1,118 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: ${APP_NAME}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80" # Alinhado com a targetPort
+spec:
+  selector:
+    app: ${APP_LABEL}
+  type: ClusterIP # Alterado de NodePort. A Rota cuidará do acesso externo.
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: ${APP_NAME}
+  annotations:
+    app.gitlab.com/app: ${CI_PROJECT_PATH_SLUG}
+    app.gitlab.com/env: ${CI_ENVIRONMENT_SLUG}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${APP_LABEL}
+  template:
+    metadata:
+      labels:
+        app: ${APP_LABEL}
+      annotations:
+        app.gitlab.com/app: ${CI_PROJECT_PATH_SLUG}
+        app.gitlab.com/env: ${CI_ENVIRONMENT_SLUG}
+    spec:
+      imagePullSecrets:
+      - name: gitlab-auth
+      containers:
+      - name: ${APP_NAME}
+        image: "${DOCKER_IMAGE_TAG}"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        # --- ADICIONADO: Health Probes (sondas de verificação) para confiabilidade ---
+        livenessProbe:
+          httpGet:
+            path: / # Para muitos frontends, o caminho raiz (/) é uma boa verificação de saúde
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        # --- ADICIONADO: Gerenciamento de recursos para estabilidade e agendamento ---
+        resources:
+          requests:
+            cpu: "50m"      # IMPORTANTE: Ajuste para as necessidades base da sua aplicação
+            memory: "128Mi"   # IMPORTANTE: Ajuste para as necessidades base da sua aplicação
+          limits:
+            cpu: "250m"     # IMPORTANTE: Ajuste para as necessidades máximas da sua aplicação
+            memory: "256Mi"   # IMPORTANTE: Ajuste para as necessidades máximas da sua aplicação
+---
+# --- SUBSTITUÍDO Ingress por Rota do OpenShift ---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-route
+spec:
+  host: ${DEPLOY_HOST}
+  to:
+    kind: Service
+    name: ${APP_NAME}
+  port:
+    targetPort: 80
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+# --- SUBSTITUÍDO Ingress por Rota do OpenShift ---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${APP_NAME}-ext-route
+spec:
+  host: ${DEPLOY_HOST_EXT}
+  to:
+    kind: Service
+    name: ${APP_NAME}
+  port:
+    targetPort: 80
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+# --- RECOMENDADO: Adicionar Horizontal Pod Autoscaler para produção ---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ${APP_NAME}-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ${APP_NAME}
+  minReplicas: 1
+  maxReplicas: 5 # IMPORTANTE: Ajuste o número máximo de réplicas conforme necessário
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80 # Escalonar para cima quando o uso de CPU atingir 80% em média
