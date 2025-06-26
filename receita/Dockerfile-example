@@ -1,0 +1,19 @@
+# Use uma imagem de runtime UBI da Red Hat. Ela é otimizada para OpenShift
+# e já inclui um usuário não-root padrão.
+ARG DEPENDENCY_PROXY
+FROM ${DEPENDENCY_PROXY}/ubi9/openjdk-21-runtime:latest
+
+# Define o diretório de trabalho da aplicação.
+WORKDIR /app
+
+# Assegura que o diretório de trabalho permite escrita pelo grupo 'root' (GID 0),
+# ao qual o usuário arbitrário do OpenShift pertencerá em tempo de execução.
+RUN chgrp -R 0 /app && \
+    chmod -R g+rwX /app
+
+# Copia o artefato .jar, que foi compilado no estágio de 'build' do GitLab CI,
+# para dentro da imagem.
+COPY target/app.jar app.jar
+
+# Define o ponto de entrada para iniciar a aplicação.
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
